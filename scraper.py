@@ -1,3 +1,5 @@
+import time
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -6,7 +8,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import TimeoutException
 from mongodb import client
-
 
 product_links = {
     "Google": {
@@ -32,8 +33,30 @@ product_links = {
 }
 
 
-def scrape_cve(driver: webdriver.Chrome, url):
-    driver.get(f"{url}?page=1&cvssscoremin=7&year=2024&month=9&order=1")
+def scrape_cve(driver: webdriver.Chrome, url, version) -> dict:
+    month = datetime.now().date().month
+    year = datetime.now().date().year
+    print(f"{month} -- {year}")
+    print(f"{version}")
+    print(f"{url}")
+    driver.get(f"{url}?page=1&cvssscoremin=7&year={year}&month={month}&order=1")
+    # time.sleep(200)
+
+    cve = {}
+
+    # Scrape CVEs
+    for i in range(1, 25):
+        try:
+            elem = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/"
+                                                                                             "div[2]/div/main/div[4]/"
+                                                                                             f"div[{i}]/div/div[1]/"
+                                                                                             "div[1]/h3/a"))).text
+            cve[version] = elem
+
+        except TimeoutException:
+            break
+
+    return cve
 
 
 # Cron Job
@@ -44,9 +67,10 @@ def scrape(driver: webdriver.Chrome, url):  # , vendor, product
     # Get 1st 15 versions
     for i in range(1, 16):
         # version
-        elem = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/"
-                                                                                         f"div/main/div[5]/table/tbody/"
-                                                                                         f"tr[{i}]/td[1]"))).text
+        elem = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/"
+                                                      f"div/main/div[5]/table/tbody/"
+                                                      f"tr[{i}]/td[1]"))).text
 
         # a tag for href
         elem2 = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/"
@@ -58,6 +82,63 @@ def scrape(driver: webdriver.Chrome, url):  # , vendor, product
     print(urls)
     with open("urls.txt", "w") as f:
         f.write(f"{urls}")
+
+    version_cve = {}
+
+    for item in urls:
+        cve = scrape_cve(driver, urls[item], item)
+        version_cve[item] = cve
+
+    with open("cves.txt", "w") as f:
+        f.write(f"{version_cve}")
+
+
+def insert_db(vendor, product, version, cve):
+    db = client["risk-radar"]
+    collection = db["vendors"]
+
+    query = {
+        "vendorName": vendor,
+        "products.productName": product
+    }
+
+    # Find the document
+    existing_entry = collection.find_one(query)
+
+    if existing_entry:
+        # Vendor and product exist, update version and CVE
+        update = {
+            "$set": {
+                "products.$.versions." + f"{version.replace('.', '_')}": {
+                    "version": version,
+                    "cve_id": cve
+                }
+            }
+        }
+
+        # collection.insert_one(data)
+        collection.update_one(query, update, upsert=True)
+    else:
+        # Vendor or product does not exist, insert a new entry
+        new_product = {
+            "vendorName": vendor,
+            "products": [
+                {
+                    "productName": product,
+                    "versions": {
+                        f"{version.replace('.', '_')}": {
+                            "version": version,
+                            "cve_id": cve
+                        }
+                    }
+                }
+            ]
+        }
+        collection.insert_one(new_product)
+
+
+def test():
+    insert_db("Google", "Chrome", "127.0.6533.99", "CVE-2024-2100")
 
 
 def main():
@@ -96,4 +177,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test()
