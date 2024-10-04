@@ -7,14 +7,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import TimeoutException
-from mongodb import client
-import logging
+from mongodb import client, vendors_collection
+from datetime import datetime
 
-
-logging.basicConfig(filename="logfile.log",
-                    format='%(asctime)s %(message)s',
-                    filemode='w')
-logger = logging.getLogger()
+log_file = open("log.txt", "at")
+log_file.write(f"{datetime.now()}\n")
 # logger.setLevel(logging.DEBUG)
 
 
@@ -81,6 +78,24 @@ def scrape(driver: webdriver.Chrome):
                                             active_3 = False
 
                                     print(f"Product Versions: {product_versions}")
+
+                                    # Check if the vendor already exists
+                                    vendor = vendors_collection.find_one({"vendorName": vendor_name})
+
+                                    if vendor:
+                                        # Vendor exists, update the product's versions
+                                        vendors_collection.update_one(
+                                            {"vendorName": vendor_name},  # Match the vendor
+                                            {"$set": {f"Products.{product_name}": product_versions}}
+                                            # Update product's versions
+                                        )
+                                    else:
+                                        # Vendor doesn't exist, insert new data
+                                        vendors_collection.insert_one({
+                                            "vendorName": vendor_name,
+                                            "Products": {product_name: product_versions}
+                                        })
+                                    print("Data insert done")
                                 except TimeoutException:
                                     active = False
                                     pass
@@ -88,12 +103,14 @@ def scrape(driver: webdriver.Chrome):
                         except TimeoutException:
                             pass
                     except TimeoutException:
-                        logger.debug(f"Letter {i} Page {page_count_1} Table {table_row_count} Done")
+                        log_file.writelines(f"Letter {caps} Page {page_count_1} Table {table_row_count} Done\n")
+                        log_file.flush()
                         table_row_count += 1
                         active_2 = False
             # This for page change of same alphabet
             except TimeoutException:
-                logger.debug(f"Letter {i} Page {page_count_1} Done")
+                log_file.writelines(f"Letter {caps} Page {page_count_1} Done\n")
+                log_file.flush()
                 page_count_1 += 1
                 break
 
