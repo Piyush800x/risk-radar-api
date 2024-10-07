@@ -11,7 +11,7 @@ client = MongoClient(URI)
 # DB
 db = client["risk-radar"]
 
-vendors_collection = db['vendors']
+vendors_collection = db['vendors2']
 # # Collection
 # collection = db["vendors"]
 

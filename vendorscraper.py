@@ -15,7 +15,7 @@ log_file.write(f"{datetime.now()}\n")
 # logger.setLevel(logging.DEBUG)
 
 
-VENDOR_CAPS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U"
+VENDOR_CAPS = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U"
                "V", "W", "X", "Y", "Z"]
 
 # PRODUCT_CAPS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
@@ -26,51 +26,58 @@ def scrape(driver: webdriver.Chrome):
     global VENDOR_CAPS
 
     for caps in VENDOR_CAPS:
-        # This loop is for example: A has 1--100 pages
         page_count_1: int = 1
-        table_row_count: int = 1
-        version_page_count: int = 1
-        version_row_count: int = 1
-        for i in range(1, 100):
+        active_4: bool = True
+        while active_4:
             try:
+                # This loop is for example: A has 1--100 pages
+                table_row_count: int = 1  # Reset the table_row_count for each new page
                 main_vendor_url: str = f"https://www.cvedetails.com/vendor/firstchar-{caps}/{page_count_1}/?sha=7ffe6d499472dec0d84de30f031c4ee7be715225&trc=2560&order=1"
-                # main_vendor_url = "https://www.cvedetails.com/vendor-search.php?search=Google"
-                driver.get(main_vendor_url)
+                # driver.get(main_vendor_url)
                 active_2: bool = True
                 while active_2:
+                    driver.get(main_vendor_url)
                     try:
-                        vendor_name = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/"
-                                                                                                                "div/div[2]/div"
-                                                                                                                "/main/div[5]/table"
-                                                                                                                f"/tbody/tr[{table_row_count}]/"
-                                                                                                                "td[1]/a"))).text
+                        vendor_name = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/"
+                                                                      "div/div[2]/div"
+                                                                      "/main/div[5]/table"
+                                                                      f"/tbody/tr[{table_row_count}]/"
+                                                                      "td[1]/a"))).text
                         print("---------------------------------------------------")
                         print(f"Vendor Name: {vendor_name}")
                         try:
-                            products_url = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{table_row_count}]/td[2]/a"))).get_attribute("href")
+                            products_url = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH,
+                                                                                                           f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{table_row_count}]/td[2]/a"))).get_attribute(
+                                "href")
                             print(f"Products Urls: {products_url}")
-                            driver.get(products_url)
+                            # driver.get(products_url)
 
                             active: bool = True
                             count: int = 1
                             while active:
                                 try:
-                                    product_name_ele = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH,
-                                                                                                                   f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{count}]/td[1]/a")))
-                                    count += 1
+                                    driver.get(products_url)
+                                    product_name_ele = WebDriverWait(driver, 10).until(
+                                        EC.presence_of_element_located((By.XPATH,
+                                                                        f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{count}]/td[1]/a")))
+
                                     product_name = product_name_ele.text
                                     product_ver_url = product_name_ele.get_attribute("href")
 
                                     print(f"Product Name: {product_name}")
                                     print(f"Product ver urls: {product_ver_url}")
-                                    active_3: bool = True
+
                                     product_versions = []
+                                    active_3: bool = True
+                                    version_row_count: int = 1
+
                                     while active_3:
-                                        # For now only scrape page 1
                                         try:
                                             driver.get(product_ver_url)
-
-                                            version = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{version_row_count}]/td[1]"))).text
+                                            version = WebDriverWait(driver, 10).until(EC.presence_of_element_located((
+                                                                                                                     By.XPATH,
+                                                                                                                     f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{version_row_count}]/td[1]"))).text
                                             product_versions.append(version)
                                             version_row_count += 1
                                         except TimeoutException:
@@ -78,8 +85,7 @@ def scrape(driver: webdriver.Chrome):
                                             active_3 = False
 
                                     print(f"Product Versions: {product_versions}")
-
-                                    # Check if the vendor already exists
+                                    # Insert/update the vendor and product versions in the database (same as before)
                                     vendor = vendors_collection.find_one({"vendorName": vendor_name})
 
                                     if vendor:
@@ -96,23 +102,30 @@ def scrape(driver: webdriver.Chrome):
                                             "Products": {product_name: product_versions}
                                         })
                                     print("Data insert done")
+                                    count += 1  # Increment count for next product row
+
                                 except TimeoutException:
+                                    # Break out of the loop when no more products are found
                                     active = False
+                                    table_row_count += 1
+                                    print(f"Finished scraping products for vendor: {vendor_name}")
                                     pass
 
                         except TimeoutException:
                             pass
                     except TimeoutException:
-                        log_file.writelines(f"Letter {caps} Page {page_count_1} Table {table_row_count} Done\n")
-                        log_file.flush()
+                        # Move to the next row (increment the table_row_count)
                         table_row_count += 1
-                        active_2 = False
-            # This for page change of same alphabet
+                        if table_row_count > 50:  # Adjust this number if there are fewer rows per page
+                            active_2 = False
+                            table_row_count = 1  # Reset for the next page
+                            page_count_1 += 1  # Increment page count
+                            print(f"Moving to page {page_count_1} for letter {caps}")
+
             except TimeoutException:
                 log_file.writelines(f"Letter {caps} Page {page_count_1} Done\n")
                 log_file.flush()
-                page_count_1 += 1
-                break
+                active_4 = False  # Stop if no more pages
 
 
 def main():
