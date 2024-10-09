@@ -6,7 +6,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from mongodb import client, vendors_collection
 from datetime import datetime
 
@@ -58,6 +58,15 @@ def scrape_products(driver: webdriver.Chrome, vendor_name, vendor_products_url):
     while True:
         driver.get(vendor_products_url + f"/page-{products_page_count}")
         try:
+            try:
+                first_ele = driver.find_element(By.XPATH,
+                                                "/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[1]/td[1]/a").text
+            except NoSuchElementException:
+                break
+            try:
+                product_elem_exists = driver.find_element(By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{products_table_row_count}]/td[1]/a")
+            except NoSuchElementException:
+                break
             product_elem = WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{products_table_row_count}]/td[1]/a")))
 
             product_name = product_elem.text
@@ -81,7 +90,7 @@ def scrape_products(driver: webdriver.Chrome, vendor_name, vendor_products_url):
 def scrape_vendor(driver: webdriver.Chrome):
     global VENDOR_CAPS
 
-    vendor_page_count: int = 1
+    vendor_page_count: int = 1   # init: 1
     vendor_table_row_count: int = 1     # init: 1
     for caps in VENDOR_CAPS:
         vendor_url: str = f"https://www.cvedetails.com/vendor/firstchar-{caps}/{vendor_page_count}/?sha=7ffe6d499472dec0d84de30f031c4ee7be715225&trc=2560&order=1"
@@ -90,6 +99,10 @@ def scrape_vendor(driver: webdriver.Chrome):
         while True:
             driver.get(vendor_url)
             try:
+                try:
+                    first_ele = driver.find_element(By.XPATH, "/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[1]/td[1]/a").text
+                except NoSuchElementException:
+                    break
                 vendor_name = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{vendor_table_row_count}]/td[1]/a"))).text
                 vendor_products_url = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, f"/html/body/div[1]/div/div[2]/div/main/div[5]/table/tbody/tr[{vendor_table_row_count}]/td[2]/a"))).get_attribute("href")
 
